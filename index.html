@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="PhD Planner">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>PhD Planner</title>
+<style>
+:root {
+  --bg: #ffffff; --bg2: #f5f5f5; --bg3: #ebebeb;
+  --text: #111111; --text2: #555555; --text3: #999999;
+  --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.2);
+  --accent: #534AB7; --green: #1D9E75; --amber: #BA7517; --red: #E24B4A;
+  --radius: 12px; --radius-sm: 8px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a; --bg2: #252525; --bg3: #2e2e2e;
+    --text: #f0f0f0; --text2: #aaaaaa; --text3: #666666;
+    --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.18);
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; font-size: 16px; }
+body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
+.app { display: flex; flex-direction: column; min-height: 100vh; max-width: 680px; margin: 0 auto; padding: 0 16px 32px; }
+
+/* Header */
+.header { padding: 14px 0 12px; border-bottom: 0.5px solid var(--border); margin-bottom: 16px; position: sticky; top: 0; background: var(--bg); z-index: 10; }
+.header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.app-title { font-size: 13px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; }
+.week-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.week-label { font-size: 15px; font-weight: 600; color: var(--text); min-width: 150px; text-align: center; }
+.nb { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-sm); padding: 6px 12px; cursor: pointer; color: var(--text2); font-size: 14px; font-family: inherit; }
+.nb:active { background: var(--bg3); }
+.toggle-wrap { display: flex; border: 0.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 12px; }
+.tog { font-size: 13px; padding: 6px 16px; background: none; border: none; cursor: pointer; color: var(--text2); font-family: inherit; flex: 1; }
+.tog.active { background: var(--bg2); color: var(--text); font-weight: 600; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.stat { background: var(--bg2); border-radius: var(--radius-sm); padding: 10px 12px; text-align: center; }
+.stat-n { font-size: 20px; font-weight: 600; line-height: 1.2; }
+.stat-l { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+/* Auth banner */
+.auth-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--bg2); border: 0.5px solid var(--border2); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 12px; }
+.auth-banner.connected { border-color: #5DCAA5; background: #E1F5EE; }
+.auth-banner-text { font-size: 13px; color: var(--text2); }
+.auth-banner.connected .auth-banner-text { color: #085041; }
+.auth-btn { font-size: 13px; padding: 6px 14px; border: none; border-radius: var(--radius-sm); background: var(--accent); color: white; cursor: pointer; font-weight: 600; font-family: inherit; white-space: nowrap; }
+.auth-btn.disconnect { background: none; border: 0.5px solid var(--border2); color: var(--text2); }
+
+/* Deadlines */
+.section-label { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin: 16px 0 8px; display: flex; align-items: center; justify-content: space-between; }
+.dl-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+.dl-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius-sm); border: 0.5px solid var(--border); background: var(--bg2); }
+.dl-row.warn { background: #FAEEDA; border-color: #EF9F27; }
+.dl-row.crit { background: #FCEBEB; border-color: #F09595; }
+.dl-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dl-name { font-size: 13px; font-weight: 500; flex: 1; min-width: 0; }
+.dl-row.warn .dl-name { color: #633806; }
+.dl-row.crit .dl-name { color: #791F1F; }
+.dl-date { font-size: 12px; color: var(--text2); white-space: nowrap; }
+.dl-badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+.dl-badge.crit { background: #F09595; color: #501313; }
+.dl-badge.warn { background: #FAC775; color: #412402; }
+.dl-badge.ok { background: var(--bg3); color: var(--text2); }
+.icon-btn { background: none; border: none; cursor: pointer; color: var(--text3); padding: 2px; font-size: 18px; line-height: 1; opacity: 0.5; }
+.icon-btn:active { opacity: 1; }
+
+/* Inline form */
+.inline-form { background: var(--bg2); border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 14px; margin-top: 8px; display: none; }
+.inline-form.open { display: block; }
+.iform-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.iform-row input, .iform-row select { font-family: inherit; font-size: 14px; height: 38px; padding: 0 10px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); flex: 1; }
+.iform-btns { display: flex; gap: 8px; }
+.btn-primary { font-size: 14px; padding: 8px 18px; border: none; border-radius: var(--radius-sm); background: var(--accent); color: white; cursor: pointer; font-weight: 600; font-family: inherit; }
+.btn-secondary { font-size: 14px; padding: 8px 14px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: none; cursor: pointer; color: var(--text2); font-family: inherit; }
+
+/* Day/hours grid */
+.day-hours-grid { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 4px; margin-bottom: 6px; }
+.day-col { display: flex; flex-direction: column; gap: 3px; }
+.day-tab { padding: 6px 2px; border-radius: var(--radius-sm); border: 0.5px solid var(--border); background: none; cursor: pointer; font-size: 11px; color: var(--text2); font-family: inherit; line-height: 1.4; text-align: center; width: 100%; }
+.day-tab:active { background: var(--bg2); }
+.day-tab.active { background: var(--accent); border-color: var(--accent); color: white; font-weight: 600; }
+.hbox { border-radius: var(--radius-sm); padding: 4px 2px; text-align: center; border: 0.5px solid transparent; }
+.hbox.green { background: #E1F5EE; border-color: #5DCAA5; }
+.hbox.amber { background: #FAEEDA; border-color: #EF9F27; }
+.hbox.red { background: #FCEBEB; border-color: #F09595; }
+.hbox.none { background: var(--bg2); border-color: var(--border); }
+.hbox-n { font-size: 11px; font-weight: 600; line-height: 1.4; }
+.hbox.green .hbox-n { color: #085041; }
+.hbox.amber .hbox-n { color: #633806; }
+.hbox.red .hbox-n { color: #791F1F; }
+.hbox.none .hbox-n { color: var(--text3); }
+.hbox-l { font-size: 9px; line-height: 1.4; }
+.hbox.green .hbox-l { color: #0F6E56; }
+.hbox.amber .hbox-l { color: #854F0B; }
+.hbox.red .hbox-l { color: #A32D2D; }
+.hbox.none .hbox-l { color: var(--text3); }
+.week-summary { font-size: 12px; color: var(--text2); padding: 4px 0 12px; }
+
+/* Calendar */
+.cal-card { background: var(--bg2); border-radius: var(--radius); overflow: hidden; margin-bottom: 4px; }
+.cal-ev { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 0.5px solid var(--border); }
+.cal-ev:last-child { border-bottom: none; }
+.cal-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.cal-time { font-size: 12px; color: var(--text3); min-width: 100px; }
+.cal-title { font-size: 13px; }
+
+/* Task cards */
+.task-card { background: var(--bg2); border-radius: var(--radius); overflow: hidden; margin-bottom: 10px; border: 0.5px solid var(--border); }
+.task-card.urgent-card { border-color: #F09595; }
+.task-header { display: flex; align-items: flex-start; gap: 10px; padding: 13px 14px; }
+.task-title-area { flex: 1; min-width: 0; }
+.task-name { font-size: 15px; font-weight: 500; line-height: 1.4; }
+.task-name.done { text-decoration: line-through; color: var(--text3); }
+.task-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.tbadge { font-size: 11px; padding: 2px 7px; border-radius: 4px; line-height: 1.5; }
+.size-badge { background: var(--bg3); color: var(--text2); border: 0.5px solid var(--border2); }
+.urg-badge { background: #FCEBEB; color: #A32D2D; border: 0.5px solid #F09595; }
+.done-badge { background: #E1F5EE; color: #085041; border: 0.5px solid #5DCAA5; }
+.task-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.task-progress { padding: 0 14px 14px; border-top: 0.5px solid var(--border); }
+.progress-top { display: flex; align-items: center; justify-content: space-between; padding: 10px 0 8px; }
+.progress-label { font-size: 12px; color: var(--text2); }
+.log-btn { font-size: 12px; padding: 5px 12px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: none; cursor: pointer; color: var(--text2); font-family: inherit; }
+.log-btn:active { background: var(--bg3); }
+.bar-wrap { height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; margin-bottom: 12px; }
+.bar-fill { height: 100%; border-radius: 2px; }
+.week-log-row { display: flex; align-items: center; gap: 10px; }
+.wlog-label { font-size: 12px; color: var(--text2); min-width: 80px; }
+.hours-input { width: 70px; font-size: 14px; font-family: inherit; height: 34px; padding: 0 8px; text-align: center; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); }
+.wlog-bar-wrap { flex: 1; height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
+
+/* Category blocks */
+.cat-block { background: var(--bg2); border-radius: var(--radius); overflow: hidden; margin-bottom: 10px; border: 0.5px solid var(--border); }
+.cat-hdr { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; user-select: none; border-bottom: 0.5px solid var(--border); }
+.cat-hdr:active { background: var(--bg3); }
+.cdot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.cat-name-lbl { font-size: 15px; font-weight: 500; flex: 1; }
+.cat-meta-lbl { font-size: 12px; color: var(--text2); }
+
+/* Add task form */
+.add-form { background: var(--bg2); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; border: 0.5px solid var(--border); }
+.af-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+.af-input { flex: 1; min-width: 160px; font-size: 14px; font-family: inherit; height: 38px; padding: 0 12px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); }
+.af-select { font-size: 14px; font-family: inherit; height: 38px; padding: 0 8px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); }
+.af-sublabel { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+.day-picks { display: flex; gap: 5px; flex-wrap: wrap; }
+.dpick { display: inline-flex; align-items: center; font-size: 13px; padding: 6px 11px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); cursor: pointer; color: var(--text2); line-height: 1.5; font-family: inherit; background: none; }
+.dpick:active { background: var(--bg3); }
+.dpick.on { background: var(--accent); border-color: var(--accent); color: white; }
+.urg-label { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text2); cursor: pointer; white-space: nowrap; }
+.urg-label input { accent-color: var(--red); width: 16px; height: 16px; }
+
+/* Custom select */
+.cs-wrap { position: relative; display: inline-block; flex: 1; }
+.cs-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 38px; padding: 0 12px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); cursor: pointer; font-size: 14px; font-family: inherit; color: var(--text); user-select: none; width: 100%; }
+.cs-trigger.open { border-color: var(--accent); }
+.cs-label { line-height: 1.6; }
+.cs-arrow { font-size: 12px; color: var(--text3); transition: transform 0.15s; }
+.cs-trigger.open .cs-arrow { transform: rotate(180deg); }
+.cs-dropdown { position: absolute; top: calc(100% + 4px); left: 0; width: 100%; background: var(--bg); border: 0.5px solid var(--border2); border-radius: var(--radius); z-index: 100; overflow: hidden; display: none; }
+.cs-dropdown.open { display: block; }
+.cs-opt { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; color: var(--text); cursor: pointer; line-height: 1.6; }
+.cs-opt:active { background: var(--bg2); }
+.cs-opt.selected { background: var(--bg2); font-weight: 500; }
+.cs-opt-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.empty-msg { font-size: 14px; color: var(--text3); font-style: italic; padding: 12px 0; }
+@keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="header-top">
+      <span class="app-title">PhD Planner</span>
+      <button class="nb" id="todaybtn">This week</button>
+    </div>
+    <div class="week-nav">
+      <button class="nb" id="prev">&#8249;</button>
+      <span class="week-label" id="wlabel"></span>
+      <button class="nb" id="next">&#8250;</button>
+    </div>
+    <div class="toggle-wrap">
+      <button class="tog active" id="tog-day">&#128197; Day</button>
+      <button class="tog" id="tog-tasks">&#9776; All tasks</button>
+    </div>
+    <div class="stats" id="stats"></div>
+  </div>
+  <div id="auth-area"></div>
+  <div id="main"></div>
+</div>
+<script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+// Replace with your Google OAuth Client ID after creating it in Google Cloud Console
+const GOOGLE_CLIENT_ID = '128345576106-t79fkl4nosc9dcn55kfbi36jdi819o5g.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
+const CAL_API = 'https://www.googleapis.com/calendar/v3';
+
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
+const CATS=[{id:'writing',name:'Writing',color:'#534AB7'},{id:'data',name:'Data & analysis',color:'#1D9E75'},{id:'reading',name:'Reading & lit',color:'#185FA5'},{id:'clinical',name:'Clinical & admin',color:'#BA7517'},{id:'meetings',name:'Meetings & supervision',color:'#D4537E'},{id:'other',name:'Other',color:'#888780'}];
+const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const SIZES={S:{hours:2},M:{hours:5},L:{hours:10},XL:{hours:20}};
+const DL_TYPES={milestone:{color:'#534AB7'},abstract:{color:'#1D9E75'},grant:{color:'#BA7517'},paper:{color:'#D4537E'}};
+
+// ─── AUTH STATE ──────────────────────────────────────────────────────────────
+let accessToken = null;
+let tokenExpiry = 0;
+
+function saveToken(token, expiresIn) {
+  accessToken = token;
+  tokenExpiry = Date.now() + (expiresIn - 60) * 1000; // 1 min buffer
+  try {
+    localStorage.setItem('gcal-token', JSON.stringify({ token, expiry: tokenExpiry }));
+  } catch(e) {}
+}
+
+function loadToken() {
+  try {
+    const s = localStorage.getItem('gcal-token');
+    if (!s) return;
+    const { token, expiry } = JSON.parse(s);
+    if (Date.now() < expiry) { accessToken = token; tokenExpiry = expiry; }
+    else { localStorage.removeItem('gcal-token'); }
+  } catch(e) {}
+}
+
+function clearToken() {
+  accessToken = null; tokenExpiry = 0;
+  try { localStorage.removeItem('gcal-token'); } catch(e) {}
+  calCache = {};
+  calFetching.clear();
+}
+
+function isAuthed() { return !!accessToken && Date.now() < tokenExpiry; }
+
+// ─── GOOGLE OAUTH (redirect flow — works in PWA on iOS and macOS) ─────────────
+function startAuth() {
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: window.location.origin + window.location.pathname,
+    response_type: 'token',
+    scope: SCOPES,
+    include_granted_scopes: 'true',
+    state: 'gcal_auth'
+  });
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+}
+
+function handleOAuthRedirect() {
+  // OAuth implicit flow returns token in URL hash
+  const hash = new URLSearchParams(window.location.hash.slice(1));
+  if (hash.get('access_token') && hash.get('state') === 'gcal_auth') {
+    saveToken(hash.get('access_token'), parseInt(hash.get('expires_in') || '3600'));
+    // Clean the token out of the URL/history
+    window.history.replaceState({}, document.title, window.location.pathname);
+    return true;
+  }
+  return false;
+}
+
+// ─── CALENDAR FETCH ──────────────────────────────────────────────────────────
+let calCache = {};
+const calFetching = new Set();
+
+async function fetchCalendarWeek(mondayStr) {
+  if (calCache[mondayStr] || calFetching.has(mondayStr)) return;
+  if (!isAuthed()) return;
+  calFetching.add(mondayStr);
+
+  const start = new Date(mondayStr + 'T00:00:00');
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+
+  try {
+    const url = `${CAL_API}/calendars/primary/events?` + new URLSearchParams({
+      timeMin: start.toISOString(),
+      timeMax: end.toISOString(),
+      singleEvents: 'true',
+      orderBy: 'startTime',
+      maxResults: '250'
+    });
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+
+    if (res.status === 401) { clearToken(); renderAuthArea(); render(); return; }
+    if (!res.ok) throw new Error(`Calendar API ${res.status}`);
+
+    const data = await res.json();
+    const items = data.items || [];
+
+    // Group by weekday
+    const calH = {Mon:0,Tue:0,Wed:0,Thu:0,Fri:0,Sat:0,Sun:0};
+    const calData = {Mon:[],Tue:[],Wed:[],Thu:[],Fri:[],Sat:[],Sun:[]};
+    const dayMap = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+    items.forEach(ev => {
+      if (!ev.start) return;
+      // All-day events have date not dateTime
+      const isAllDay = !!ev.start.date && !ev.start.dateTime;
+      if (isAllDay) return; // skip all-day events (birthdays, OOO markers etc)
+
+      const startDt = new Date(ev.start.dateTime);
+      const endDt = ev.end?.dateTime ? new Date(ev.end.dateTime) : new Date(startDt.getTime() + 3600000);
+      const dayName = dayMap[startDt.getDay()];
+      if (!calData[dayName]) return;
+
+      const durationH = (endDt - startDt) / 3600000;
+      calH[dayName] = Math.round((calH[dayName] + durationH) * 100) / 100;
+
+      // Format time string e.g. "9:00–10:30am"
+      const fmt = d => {
+        let h = d.getHours(), m = d.getMinutes();
+        const ampm = h < 12 ? 'am' : 'pm';
+        h = h % 12 || 12;
+        return m === 0 ? `${h}` : `${h}:${String(m).padStart(2,'0')}`;
+      };
+      const startAmPm = startDt.getHours() < 12 ? 'am' : 'pm';
+      const endAmPm = endDt.getHours() < 12 ? 'am' : 'pm';
+      const timeStr = startAmPm === endAmPm
+        ? `${fmt(startDt)}–${fmt(endDt)}${endAmPm}`
+        : `${fmt(startDt)}${startAmPm}–${fmt(endDt)}${endAmPm}`;
+
+      calData[dayName].push({ time: timeStr, title: ev.summary || '(No title)' });
+    });
+
+    // Cache — also persist to localStorage so it survives refresh
+    calCache[mondayStr] = { calH, calData };
+    try {
+      const stored = JSON.parse(localStorage.getItem('calCache') || '{}');
+      stored[mondayStr] = { calH, calData, fetchedAt: Date.now() };
+      localStorage.setItem('calCache', JSON.stringify(stored));
+    } catch(e) {}
+
+  } catch(err) {
+    console.error('Calendar fetch error:', err);
+    calCache[mondayStr] = { calH: {}, calData: {} };
+  }
+
+  calFetching.delete(mondayStr);
+  render();
+}
+
+function loadCalCache() {
+  // Load previously fetched weeks from localStorage (max 24h old)
+  try {
+    const stored = JSON.parse(localStorage.getItem('calCache') || '{}');
+    const cutoff = Date.now() - 24 * 3600 * 1000;
+    Object.entries(stored).forEach(([k, v]) => {
+      if (v.fetchedAt > cutoff) calCache[k] = { calH: v.calH, calData: v.calData };
+    });
+  } catch(e) {}
+}
+
+function getCalData(mondayStr) { return calCache[mondayStr] || null; }
+
+// ─── APP STATE ────────────────────────────────────────────────────────────────
+const TODAY_IDX = new Date().getDay()===0 ? 6 : new Date().getDay()-1;
+let weekOffset=0, view='day', selDay=DAYS[TODAY_IDX];
+let deadlines=[], tasks=[], weekLogs={}, collapsed={};
+let selDays=[DAYS[TODAY_IDX]], addUrgent=false, selCat='writing';
+
+function wkey(){ return 'w'+weekOffset; }
+function getMonday(off){ const now=new Date(),dow=now.getDay(),m=new Date(now); m.setDate(now.getDate()-(dow===0?6:dow-1)+off*7); m.setHours(0,0,0,0); return m; }
+function getMondayStr(off){ const m=getMonday(off); return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`; }
+function getWeekLabel(off){ const d=getMonday(off),e=new Date(d); e.setDate(d.getDate()+6); const f=dt=>dt.toLocaleDateString('en-AU',{day:'numeric',month:'short'}); return `${f(d)} – ${f(e)}`; }
+function daysUntil(ds){ const now=new Date(); now.setHours(0,0,0,0); const d=new Date(ds); d.setHours(0,0,0,0); return Math.round((d-now)/864e5); }
+function totalHours(tid){ return Object.values(weekLogs).reduce((s,wl)=>s+(wl[tid]||0),0); }
+function weekHours(tid){ return (weekLogs[wkey()]||{})[tid]||0; }
+function logHours(tid,h){ if(!weekLogs[wkey()]) weekLogs[wkey()]={}; weekLogs[wkey()][tid]=Math.max(0,h); save(); render(); }
+function hoursColor(h){ if(h===0) return 'none'; if(h<=2) return 'green'; if(h<=4) return 'amber'; return 'red'; }
+
+function save(){ try{ localStorage.setItem('phd-planner', JSON.stringify({tasks,deadlines,weekLogs,collapsed})); }catch(e){} }
+function load(){
+  try{
+    const s=localStorage.getItem('phd-planner');
+    if(s){ const p=JSON.parse(s); tasks=p.tasks||[]; deadlines=p.deadlines||[]; weekLogs=p.weekLogs||{}; collapsed=p.collapsed||{}; }
+  }catch(e){}
+}
+
+// ─── AUTH UI ──────────────────────────────────────────────────────────────────
+function renderAuthArea() {
+  const area = document.getElementById('auth-area');
+  area.innerHTML = '';
+  const banner = document.createElement('div');
+  banner.className = 'auth-banner' + (isAuthed() ? ' connected' : '');
+
+  if (isAuthed()) {
+    const txt = document.createElement('span');
+    txt.className = 'auth-banner-text';
+    txt.textContent = '✓ Google Calendar connected';
+    const btn = document.createElement('button');
+    btn.className = 'auth-btn disconnect';
+    btn.textContent = 'Disconnect';
+    btn.addEventListener('click', () => { clearToken(); render(); renderAuthArea(); });
+    banner.appendChild(txt); banner.appendChild(btn);
+  } else {
+    const txt = document.createElement('span');
+    txt.className = 'auth-banner-text';
+    txt.textContent = 'Connect Google Calendar to sync events';
+    const btn = document.createElement('button');
+    btn.className = 'auth-btn';
+    btn.textContent = 'Connect';
+    btn.addEventListener('click', startAuth);
+    banner.appendChild(txt); banner.appendChild(btn);
+  }
+  area.appendChild(banner);
+}
+
+// ─── CUSTOM SELECT ────────────────────────────────────────────────────────────
+function makeCS(options, curVal, onChange) {
+  const wrap=document.createElement('div'); wrap.className='cs-wrap';
+  const trig=document.createElement('div'); trig.className='cs-trigger';
+  const lbl=document.createElement('span'); lbl.className='cs-label';
+  const arr=document.createElement('span'); arr.className='cs-arrow'; arr.textContent='▾';
+  trig.appendChild(lbl); trig.appendChild(arr);
+  const dd=document.createElement('div'); dd.className='cs-dropdown';
+  function setVal(val){ const opt=options.find(o=>o.value===val)||options[0]; lbl.textContent=opt.label; dd.querySelectorAll('.cs-opt').forEach(el=>el.className='cs-opt'+(el.dataset.val===val?' selected':'')); }
+  options.forEach(opt => {
+    const el=document.createElement('div'); el.className='cs-opt'; el.dataset.val=opt.value;
+    if(opt.color){ const dot=document.createElement('div'); dot.className='cs-opt-dot'; dot.style.background=opt.color; el.appendChild(dot); }
+    el.appendChild(document.createTextNode(opt.label));
+    el.addEventListener('click', ()=>{ onChange(opt.value); setVal(opt.value); dd.classList.remove('open'); trig.classList.remove('open'); });
+    dd.appendChild(el);
+  });
+  trig.addEventListener('click', e => {
+    e.stopPropagation();
+    const isOpen=dd.classList.contains('open');
+    document.querySelectorAll('.cs-dropdown').forEach(d=>d.classList.remove('open'));
+    document.querySelectorAll('.cs-trigger').forEach(t=>t.classList.remove('open'));
+    if(!isOpen){ dd.classList.add('open'); trig.classList.add('open'); }
+  });
+  document.addEventListener('click', ()=>{ dd.classList.remove('open'); trig.classList.remove('open'); });
+  wrap.appendChild(trig); wrap.appendChild(dd); setVal(curVal);
+  return wrap;
+}
+
+// ─── DEADLINES ────────────────────────────────────────────────────────────────
+function renderDeadlines(container) {
+  const hdr=document.createElement('div'); hdr.className='section-label';
+  hdr.innerHTML='Deadlines & milestones <button class="nb" id="dl-add-btn" style="font-size:12px;padding:3px 10px">+ Add</button>';
+  container.appendChild(hdr);
+  if(!deadlines.length){
+    const em=document.createElement('div'); em.style.cssText='font-size:13px;color:var(--text3);font-style:italic;padding:4px 0 8px'; em.textContent='No deadlines added yet'; container.appendChild(em);
+  } else {
+    const list=document.createElement('div'); list.className='dl-list';
+    [...deadlines].sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(dl => {
+      const d=daysUntil(dl.date), crit=d<=7&&d>=0, warn=d>7&&d<=28, past=d<0;
+      const ti=DL_TYPES[dl.type]||DL_TYPES.milestone;
+      const row=document.createElement('div'); row.className='dl-row'+(crit?' crit':warn?' warn':'');
+      const dot=document.createElement('div'); dot.className='dl-dot'; dot.style.background=ti.color;
+      const name=document.createElement('span'); name.className='dl-name'; name.textContent=dl.name;
+      const date=document.createElement('span'); date.className='dl-date'; date.textContent=new Date(dl.date).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});
+      const badge=document.createElement('span'); badge.className='dl-badge '+(crit?'crit':warn?'warn':'ok'); badge.textContent=past?'Overdue':d===0?'Today':`${d}d`;
+      const del=document.createElement('button'); del.className='icon-btn'; del.textContent='×'; del.addEventListener('click',()=>{ deadlines=deadlines.filter(x=>x.id!==dl.id); save(); render(); });
+      row.appendChild(dot); row.appendChild(name); row.appendChild(date); row.appendChild(badge); row.appendChild(del);
+      list.appendChild(row);
+    });
+    container.appendChild(list);
+  }
+  const form=document.createElement('div'); form.className='inline-form'; form.id='dl-form';
+  form.innerHTML=`<div class="iform-row"><input type="text" id="dl-name" placeholder="Deadline name..." style="flex:1"><input type="date" id="dl-date" style="width:140px;flex:none"></div><div class="iform-row"><select id="dl-type" style="flex:1"><option value="milestone">PhD milestone</option><option value="abstract">Abstract / conference</option><option value="grant">Grant application</option><option value="paper">Paper submission</option></select></div><div class="iform-btns"><button class="btn-primary" id="dl-save">Save</button><button class="btn-secondary" id="dl-cancel">Cancel</button></div>`;
+  container.appendChild(form);
+  document.getElementById('dl-add-btn').addEventListener('click',()=>form.classList.toggle('open'));
+  document.getElementById('dl-cancel').addEventListener('click',()=>form.classList.remove('open'));
+  document.getElementById('dl-save').addEventListener('click',()=>{
+    const name=document.getElementById('dl-name').value.trim(), date=document.getElementById('dl-date').value, type=document.getElementById('dl-type').value;
+    if(!name||!date) return;
+    deadlines.push({id:Date.now(),name,date,type});
+    document.getElementById('dl-name').value=''; document.getElementById('dl-date').value='';
+    form.classList.remove('open'); save(); render();
+  });
+}
+
+// ─── TASK HELPERS ─────────────────────────────────────────────────────────────
+function addTask() {
+  const inp=document.getElementById('t-name'), text=inp.value.trim(), sizesel=document.getElementById('t-size');
+  if(!text) return;
+  tasks.push({id:Date.now()+Math.floor(Math.random()*9999),name:text,cat:selCat,size:sizesel.value,days:[...selDays],urgent:addUrgent,done:false});
+  inp.value=''; addUrgent=false; selDays=[selDay];
+  document.getElementById('t-urgent').checked=false;
+  save(); render();
+}
+function markDone(tid){ const t=tasks.find(x=>x.id===tid); if(t){ t.done=!t.done; save(); render(); } }
+function toggleUrgent(tid){ const t=tasks.find(x=>x.id===tid); if(t){ t.urgent=!t.urgent; save(); render(); } }
+function deleteTask(tid){ tasks=tasks.filter(x=>x.id!==tid); save(); render(); }
+function setView(v){ view=v; document.getElementById('tog-day').className='tog'+(v==='day'?' active':''); document.getElementById('tog-tasks').className='tog'+(v==='tasks'?' active':''); render(); }
+
+// ─── TASK CARD ────────────────────────────────────────────────────────────────
+function taskCard(t, showDays) {
+  const cat=CATS.find(c=>c.id===t.cat)||CATS[0];
+  const wh=weekHours(t.id), th=totalHours(t.id), sizeH=SIZES[t.size]?.hours||5;
+  const pct=Math.min(100,Math.round(th/sizeH*100));
+  const card=document.createElement('div'); card.className='task-card'+(t.urgent&&!t.done?' urgent-card':'');
+  const hdr=document.createElement('div'); hdr.className='task-header';
+  const ta=document.createElement('div'); ta.className='task-title-area';
+  const tn=document.createElement('div'); tn.className='task-name'+(t.done?' done':''); tn.textContent=t.name;
+  const badges=document.createElement('div'); badges.className='task-badges';
+  const sb=document.createElement('span'); sb.className='tbadge size-badge'; sb.textContent=t.size; badges.appendChild(sb);
+  const cb=document.createElement('span'); cb.className='tbadge'; cb.style.cssText=`background:${cat.color}22;color:${cat.color};border:0.5px solid ${cat.color}55;font-size:11px;padding:2px 7px;border-radius:4px;line-height:1.5`; cb.textContent=cat.name; badges.appendChild(cb);
+  if(showDays&&t.days?.length){ t.days.forEach(d=>{ const db=document.createElement('span'); db.className='tbadge size-badge'; db.textContent=d; badges.appendChild(db); }); }
+  if(t.urgent&&!t.done){ const ub=document.createElement('span'); ub.className='tbadge urg-badge'; ub.textContent='Urgent'; badges.appendChild(ub); }
+  if(t.done){ const db=document.createElement('span'); db.className='tbadge done-badge'; db.textContent='Done'; badges.appendChild(db); }
+  ta.appendChild(tn); ta.appendChild(badges);
+  const acts=document.createElement('div'); acts.className='task-actions';
+  const fb=document.createElement('button'); fb.className='icon-btn'; fb.style.cssText=t.urgent?'color:#E24B4A;opacity:1':''; fb.textContent='⚑'; fb.addEventListener('click',()=>toggleUrgent(t.id));
+  const db=document.createElement('button'); db.className='icon-btn'; db.textContent='×'; db.addEventListener('click',()=>deleteTask(t.id));
+  acts.appendChild(fb); acts.appendChild(db); hdr.appendChild(ta); hdr.appendChild(acts); card.appendChild(hdr);
+  const prog=document.createElement('div'); prog.className='task-progress';
+  const ptop=document.createElement('div'); ptop.className='progress-top';
+  const pl=document.createElement('span'); pl.className='progress-label'; pl.textContent=`${th.toFixed(1)}h total · ${pct}% of ${t.size} estimate`;
+  const mb=document.createElement('button'); mb.className='log-btn'; mb.textContent=t.done?'Mark active':'Mark done'; mb.addEventListener('click',()=>markDone(t.id));
+  ptop.appendChild(pl); ptop.appendChild(mb);
+  const bw=document.createElement('div'); bw.className='bar-wrap';
+  const bf=document.createElement('div'); bf.className='bar-fill'; bf.style.cssText=`width:${pct}%;background:#534AB7`; bw.appendChild(bf);
+  const wr=document.createElement('div'); wr.className='week-log-row';
+  const wl=document.createElement('span'); wl.className='wlog-label'; wl.textContent='This week:';
+  const hi=document.createElement('input'); hi.className='hours-input'; hi.type='number'; hi.min='0'; hi.step='0.5'; hi.value=wh||''; hi.placeholder='0h';
+  hi.addEventListener('change',()=>logHours(t.id,parseFloat(hi.value)||0));
+  const wb2=document.createElement('div'); wb2.className='wlog-bar-wrap';
+  const wf=document.createElement('div'); wf.className='bar-fill'; wf.style.cssText=`background:#1D9E75;width:${Math.min(100,wh/sizeH*100)}%`; wb2.appendChild(wf);
+  wr.appendChild(wl); wr.appendChild(hi); wr.appendChild(wb2);
+  prog.appendChild(ptop); prog.appendChild(bw); prog.appendChild(wr); card.appendChild(prog);
+  return card;
+}
+
+// ─── ADD FORM ─────────────────────────────────────────────────────────────────
+function renderAddForm() {
+  const f=document.createElement('div'); f.className='add-form';
+  const r1=document.createElement('div'); r1.className='af-row';
+  const inp=document.createElement('input'); inp.className='af-input'; inp.id='t-name'; inp.type='text'; inp.placeholder='Task name...';
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addTask(); } });
+  r1.appendChild(inp);
+  const r2=document.createElement('div'); r2.className='af-row';
+  const catEl=makeCS(CATS.map(c=>({value:c.id,label:c.name,color:c.color})),selCat,val=>{ selCat=val; });
+  r2.appendChild(catEl);
+  const ss=document.createElement('select'); ss.className='af-select'; ss.id='t-size';
+  Object.entries(SIZES).forEach(([k,v])=>{ const o=document.createElement('option'); o.value=k; o.textContent=`${k} (~${v.hours}h)`; ss.appendChild(o); });
+  ss.value='M'; r2.appendChild(ss);
+  const ul=document.createElement('label'); ul.className='urg-label';
+  const uc=document.createElement('input'); uc.type='checkbox'; uc.id='t-urgent'; uc.addEventListener('change',e=>{ addUrgent=e.target.checked; });
+  ul.appendChild(uc); ul.appendChild(document.createTextNode('Urgent')); r2.appendChild(ul);
+  const btn=document.createElement('button'); btn.className='btn-primary'; btn.textContent='Add'; btn.addEventListener('click',addTask); r2.appendChild(btn);
+  const r3=document.createElement('div');
+  const dl=document.createElement('div'); dl.className='af-sublabel'; dl.style.marginTop='4px'; dl.textContent='Planned days';
+  const dp=document.createElement('div'); dp.className='day-picks'; dp.style.marginTop='6px';
+  DAYS.forEach(d=>{
+    const b=document.createElement('button'); b.className='dpick'+(selDays.includes(d)?' on':''); b.textContent=d; b.dataset.day=d;
+    b.addEventListener('click',()=>{ if(selDays.includes(d)) selDays=selDays.filter(x=>x!==d); else selDays.push(d); document.querySelectorAll('.dpick').forEach(x=>{ x.className='dpick'+(selDays.includes(x.dataset.day)?' on':''); }); });
+    dp.appendChild(b);
+  });
+  r3.appendChild(dl); r3.appendChild(dp);
+  f.appendChild(r1); f.appendChild(r2); f.appendChild(r3);
+  return f;
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function render() {
+  document.getElementById('wlabel').textContent = getWeekLabel(weekOffset);
+  const active=tasks.filter(t=>!t.done), done=tasks.filter(t=>t.done);
+  const urgent=active.filter(t=>t.urgent).length;
+  const weekTotal=Object.values(weekLogs[wkey()]||{}).reduce((s,h)=>s+h,0);
+  document.getElementById('stats').innerHTML=`<div class="stat"><div class="stat-n">${active.length}</div><div class="stat-l">Active</div></div><div class="stat"><div class="stat-n" style="color:#1D9E75">${done.length}</div><div class="stat-l">Done</div></div><div class="stat"><div class="stat-n" style="color:#E24B4A">${urgent}</div><div class="stat-l">Urgent</div></div><div class="stat"><div class="stat-n" style="color:#534AB7">${weekTotal.toFixed(1)}h</div><div class="stat-l">Logged</div></div>`;
+
+  const main=document.getElementById('main'); main.innerHTML='';
+  const mkey=getMondayStr(weekOffset);
+
+  if(isAuthed() && !calCache[mkey] && !calFetching.has(mkey)) fetchCalendarWeek(mkey);
+
+  const cached=getCalData(mkey);
+  const calH=cached ? cached.calH : {};
+  const calData=cached ? cached.calData : {};
+  const calLoading=calFetching.has(mkey);
+
+  renderDeadlines(main);
+
+  if(view==='day'){
+    const lbl=document.createElement('div'); lbl.className='section-label';
+    const lblText=document.createElement('span'); lblText.textContent='Week at a glance';
+    lbl.appendChild(lblText);
+    if(!cached && calLoading){
+      const spin=document.createElement('span'); spin.style.cssText='font-size:11px;color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;animation:pulse 1.2s ease-in-out infinite'; spin.textContent='Syncing calendar…'; lbl.appendChild(spin);
+    } else if(isAuthed()) {
+      const rfbtn=document.createElement('button'); rfbtn.className='nb'; rfbtn.style.cssText='font-size:11px;padding:2px 8px'; rfbtn.textContent='↻ Refresh';
+      rfbtn.addEventListener('click',()=>{ delete calCache[mkey]; try{ const s=JSON.parse(localStorage.getItem('calCache')||'{}'); delete s[mkey]; localStorage.setItem('calCache',JSON.stringify(s)); }catch(e){} calFetching.delete(mkey); render(); });
+      lbl.appendChild(rfbtn);
+    }
+    main.appendChild(lbl);
+
+    const grid=document.createElement('div'); grid.className='day-hours-grid';
+    let totalCal=0;
+    DAYS.forEach(d=>{
+      const h=calH[d]||0; totalCal+=h;
+      const col=hoursColor(h);
+      const dc=document.createElement('div'); dc.className='day-col';
+      const tc=tasks.filter(t=>!t.done&&t.days?.includes(d)).length;
+      const tab=document.createElement('button'); tab.className='day-tab'+(d===selDay?' active':'');
+      tab.textContent=d+(tc>0?` ${tc}`:'');
+      tab.addEventListener('click',()=>{ selDay=d; selDays=[d]; render(); });
+      const hbox=document.createElement('div'); hbox.className=`hbox ${col}`;
+      hbox.innerHTML=`<div class="hbox-n">${h>0?h.toFixed(1)+'h':'—'}</div><div class="hbox-l">${h===0?(isAuthed()&&!cached&&!calLoading?'–':'Free'):h<=2?'Light':h<=4?'Mod':'Busy'}</div>`;
+      dc.appendChild(tab); dc.appendChild(hbox); grid.appendChild(dc);
+    });
+    main.appendChild(grid);
+
+    const ws=document.createElement('div'); ws.className='week-summary';
+    if(!isAuthed()) ws.textContent='Connect Google Calendar to see your committed hours';
+    else if(calLoading&&!cached) ws.textContent='Loading…';
+    else ws.textContent=`${totalCal.toFixed(1)}h committed · ~${Math.max(0,40-totalCal).toFixed(0)}h free (of 40h working week)`;
+    main.appendChild(ws);
+
+    const calEvs=calData[selDay]||[];
+    if(calEvs.length){
+      const cl=document.createElement('div'); cl.className='section-label'; cl.textContent=`Calendar — ${selDay}`; main.appendChild(cl);
+      const cc=document.createElement('div'); cc.className='cal-card';
+      calEvs.forEach(ev=>{ const r=document.createElement('div'); r.className='cal-ev'; r.innerHTML=`<div class="cal-dot"></div><span class="cal-time">${ev.time}</span><span class="cal-title">${ev.title}</span>`; cc.appendChild(r); });
+      main.appendChild(cc);
+    } else if(isAuthed()&&calLoading&&!cached){
+      const cl=document.createElement('div'); cl.className='section-label'; cl.textContent=`Calendar — ${selDay}`; main.appendChild(cl);
+      const ph=document.createElement('div'); ph.className='cal-card'; ph.innerHTML=`<div class="cal-ev" style="justify-content:center;color:var(--text3);font-size:13px;font-style:italic">Loading events…</div>`; main.appendChild(ph);
+    }
+
+    const dayTasks=tasks.filter(t=>!t.done&&t.days?.includes(selDay)).sort((a,b)=>(b.urgent?1:0)-(a.urgent?1:0));
+    const tl=document.createElement('div'); tl.className='section-label'; tl.textContent=`Tasks — ${selDay}`; main.appendChild(tl);
+    if(!dayTasks.length){ const em=document.createElement('div'); em.className='empty-msg'; em.textContent='No tasks planned for this day'; main.appendChild(em); }
+    else{ dayTasks.forEach(t=>main.appendChild(taskCard(t,false))); }
+    main.appendChild(renderAddForm());
+
+  } else {
+    main.appendChild(renderAddForm());
+    const tl=document.createElement('div'); tl.className='section-label'; tl.textContent='All tasks'; main.appendChild(tl);
+    CATS.forEach(c=>{
+      const ct=tasks.filter(t=>t.cat===c.id); if(!ct.length) return;
+      const isOpen=!collapsed[c.id];
+      const block=document.createElement('div'); block.className='cat-block';
+      const ah=ct.filter(t=>!t.done).length, dh=ct.filter(t=>t.done).length;
+      const hdr=document.createElement('div'); hdr.className='cat-hdr';
+      hdr.innerHTML=`<div class="cdot" style="background:${c.color}"></div><span class="cat-name-lbl">${c.name}</span><span class="cat-meta-lbl">${ah} active · ${dh} done</span><span style="font-size:14px;color:var(--text3)">${isOpen?'▴':'▾'}</span>`;
+      hdr.addEventListener('click',()=>{ collapsed[c.id]=!collapsed[c.id]; save(); render(); });
+      block.appendChild(hdr);
+      if(isOpen){ [...ct.filter(t=>!t.done).sort((a,b)=>(b.urgent?1:0)-(a.urgent?1:0)),...ct.filter(t=>t.done)].forEach(t=>{ const w=document.createElement('div'); w.style.borderTop='0.5px solid var(--border)'; w.appendChild(taskCard(t,true)); block.appendChild(w); }); }
+      main.appendChild(block);
+    });
+  }
+}
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+document.getElementById('prev').addEventListener('click',()=>{ weekOffset--; render(); });
+document.getElementById('next').addEventListener('click',()=>{ weekOffset++; render(); });
+document.getElementById('todaybtn').addEventListener('click',()=>{ weekOffset=0; render(); });
+document.getElementById('tog-day').addEventListener('click',()=>setView('day'));
+document.getElementById('tog-tasks').addEventListener('click',()=>setView('tasks'));
+
+// Register service worker for PWA offline support
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW:', e)); });
+}
+
+handleOAuthRedirect(); // handle token from redirect before anything else
+loadToken();
+loadCalCache();
+load();
+renderAuthArea();
+render();
+</script>
+</body>
+</html>
