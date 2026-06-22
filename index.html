@@ -309,14 +309,32 @@ async function fetchCalendarWeek(mondayStr) {
       if (!ev.start) return;
       // All-day events have date not dateTime
       const isAllDay = !!ev.start.date && !ev.start.dateTime;
-      if (isAllDay) return; // skip all-day events (birthdays, OOO markers etc)
+      const title = ev.summary || '';
+      const CLINICAL_RE = /\b(clinic|scope|scopes|ius)\b/i;
+      const isClinical = CLINICAL_RE.test(title);
 
-      const startDt = new Date(ev.start.dateTime);
-      const endDt = ev.end?.dateTime ? new Date(ev.end.dateTime) : new Date(startDt.getTime() + 3600000);
+      // Skip all-day events unless they match clinical keywords
+      if (isAllDay && !isClinical) return;
+
+      let startDt, endDt, durationH, timeStr;
+
+      if (isAllDay && isClinical) {
+        // Treat as a 4-hour block; use the event date to find the weekday
+        const evDate = new Date(ev.start.date + 'T00:00:00');
+        const dayName = dayMap[evDate.getDay()];
+        if (!calData[dayName]) return;
+        durationH = 4;
+        calH[dayName] = Math.round((calH[dayName] + durationH) * 100) / 100;
+        calData[dayName].push({ time: '4h block', title: title || '(No title)' });
+        return;
+      }
+
+      startDt = new Date(ev.start.dateTime);
+      endDt = ev.end?.dateTime ? new Date(ev.end.dateTime) : new Date(startDt.getTime() + 3600000);
       const dayName = dayMap[startDt.getDay()];
       if (!calData[dayName]) return;
 
-      const durationH = (endDt - startDt) / 3600000;
+      durationH = (endDt - startDt) / 3600000;
       calH[dayName] = Math.round((calH[dayName] + durationH) * 100) / 100;
 
       // Format time string e.g. "9:00–10:30am"
@@ -328,11 +346,11 @@ async function fetchCalendarWeek(mondayStr) {
       };
       const startAmPm = startDt.getHours() < 12 ? 'am' : 'pm';
       const endAmPm = endDt.getHours() < 12 ? 'am' : 'pm';
-      const timeStr = startAmPm === endAmPm
+      timeStr = startAmPm === endAmPm
         ? `${fmt(startDt)}–${fmt(endDt)}${endAmPm}`
         : `${fmt(startDt)}${startAmPm}–${fmt(endDt)}${endAmPm}`;
 
-      calData[dayName].push({ time: timeStr, title: ev.summary || '(No title)' });
+      calData[dayName].push({ time: timeStr, title: title || '(No title)' });
     });
 
     // Cache — also persist to localStorage so it survives refresh
