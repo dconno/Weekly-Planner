@@ -1,7 +1,7 @@
 // PhD Planner Service Worker
 // Caches the app shell for offline use; calendar data fetched live when online
 
-const CACHE = 'weekly-planner-v3';
+const CACHE = 'weekly-planner-v6';
 const SHELL = [
   './',
   './index.html',
