@@ -229,6 +229,21 @@ body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
 .cal-picker-day.past { opacity: 0.3; cursor: default; }
 .slot-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 3px 8px; border-radius: 20px; background: var(--bg3); border: 0.5px solid var(--border2); color: var(--text2); }
 .slot-chip-x { background: none; border: none; cursor: pointer; color: var(--text3); font-size: 13px; padding: 0; line-height: 1; margin-left: 2px; }
+.recur-badge { background: #E8EFF8; color: #2C6FB0; border: 0.5px solid #A8C4E0; font-size: 11px; padding: 2px 7px; border-radius: 4px; line-height: 1.5; }
+@media (prefers-color-scheme: dark) { .recur-badge { background: #1a2d42; color: #5aa0dc; border-color: #2a4a6a; } }
+.recur-block { background: var(--bg2); border-radius: var(--radius); border: 0.5px solid var(--border); margin-bottom: 10px; overflow: hidden; }
+.recur-hdr { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; user-select: none; border-bottom: 0.5px solid transparent; }
+.recur-hdr.open { border-bottom-color: var(--border); }
+.recur-hdr:active { opacity: 0.85; }
+.recur-hdr-title { font-size: 14px; font-weight: 500; flex: 1; color: var(--text); }
+.recur-hdr-meta { font-size: 12px; color: var(--text3); }
+.recur-rule-lbl { font-size: 11px; color: var(--text3); margin-top: 3px; }
+/* Modal recurrence section */
+.recur-field-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.recur-field-row label { font-size: 12px; color: var(--text2); white-space: nowrap; min-width: 80px; }
+.recur-select { font-family: inherit; font-size: 14px; height: 36px; padding: 0 8px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg2); color: var(--text); flex: 1; }
+.recur-date-inp { font-family: inherit; font-size: 14px; height: 36px; padding: 0 8px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg2); color: var(--text); flex: 1; }
+.exception-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; font-size: 13px; color: var(--text2); border-bottom: 0.5px solid var(--border); }
 </style>
 </head>
 <body>
@@ -597,10 +612,10 @@ function scheduleSync() {
 
 
 // ─── APP STATE ────────────────────────────────────────────────────────────────
-const TODAY_IDX = new Date().getDay()===0 ? 6 : new Date().getDay()-1;
-let weekOffset=0, view='day', selDay=DAYS[TODAY_IDX];
+function todayStr(){ const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; }
+let weekOffset=0, view='day', selDay=todayStr();
 let deadlines=[], tasks=[], collapsed={};
-let selSlots=[], addUrgent=false, selCat='writing';
+let selSlots=[], selRecurrence=null, addUrgent=false, selCat='writing';
 // selSlots: [{week:'2026-06-30', day:'Mon', hours:1}, ...]
 
 function getMonday(off){ const now=new Date(),dow=now.getDay(),m=new Date(now); m.setDate(now.getDate()-(dow===0?6:dow-1)+off*7); m.setHours(0,0,0,0); return m; }
@@ -643,6 +658,77 @@ function removeSubtaskSlot(tid, sid, week, day){
   const s=t.subtasks&&t.subtasks.find(x=>x.id===sid); if(!s) return;
   s.scheduledSlots=(s.scheduledSlots||[]).filter(x=>!(x.week===week&&x.day===day));
   t.modified=Date.now(); save();
+}
+
+// ─── RECURRENCE ENGINE ───────────────────────────────────────────────────────
+// r = task.recurrence = { type, dayOfWeek, weekOfMonth, dayOfMonth, startDate, endDate?, exceptions:[] }
+// types: 'weekly' | 'fortnightly' | 'monthly-date' | 'monthly-day'
+const DAYNAME_TO_JS = {Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6,Sun:0};
+const JS_TO_DAYNAME = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function occursOn(task, dateStr) {
+  const r = task.recurrence;
+  if (!r || !r.type || r.type === 'none') return false;
+  const d = new Date(dateStr + 'T00:00:00');
+  const start = new Date(r.startDate + 'T00:00:00');
+  if (d < start) return false;
+  if (r.endDate) { const end = new Date(r.endDate + 'T00:00:00'); if (d > end) return false; }
+  if ((r.exceptions||[]).includes(dateStr)) return false;
+
+  if (r.type === 'weekly') {
+    return d.getDay() === DAYNAME_TO_JS[r.dayOfWeek];
+  }
+  if (r.type === 'fortnightly') {
+    if (d.getDay() !== DAYNAME_TO_JS[r.dayOfWeek]) return false;
+    const diffDays = Math.round((d - start) / 864e5);
+    return diffDays % 14 === 0;
+  }
+  if (r.type === 'monthly-date') {
+    return d.getDate() === r.dayOfMonth;
+  }
+  if (r.type === 'monthly-day') {
+    if (d.getDay() !== DAYNAME_TO_JS[r.dayOfWeek]) return false;
+    // Which occurrence of this weekday in the month?
+    const occurrence = Math.ceil(d.getDate() / 7);
+    if (r.weekOfMonth === -1) {
+      // Last occurrence: check if adding 7 days goes to next month
+      const next = new Date(d); next.setDate(d.getDate() + 7);
+      return next.getMonth() !== d.getMonth();
+    }
+    return occurrence === r.weekOfMonth;
+  }
+  return false;
+}
+
+function recurrenceLabel(r) {
+  if (!r || !r.type || r.type === 'none') return '';
+  const DAY = r.dayOfWeek || '';
+  if (r.type === 'weekly') return `Every ${DAY}`;
+  if (r.type === 'fortnightly') return `Every 2 weeks (${DAY})`;
+  if (r.type === 'monthly-date') return `Monthly on the ${r.dayOfMonth}${ordinal(r.dayOfMonth)}`;
+  if (r.type === 'monthly-day') {
+    const wk = r.weekOfMonth === -1 ? 'last' : ['','1st','2nd','3rd','4th'][r.weekOfMonth];
+    return `${wk.charAt(0).toUpperCase()+wk.slice(1)} ${DAY} of each month`;
+  }
+  return '';
+}
+
+function ordinal(n) {
+  const s = ['th','st','nd','rd'], v = n % 100;
+  return s[(v-20)%10]||s[v]||s[0];
+}
+
+function skipOccurrence(tid, dateStr) {
+  const t = tasks.find(x => x.id === tid); if (!t || !t.recurrence) return;
+  if (!t.recurrence.exceptions) t.recurrence.exceptions = [];
+  if (!t.recurrence.exceptions.includes(dateStr)) t.recurrence.exceptions.push(dateStr);
+  t.modified = Date.now(); save(); render();
+}
+
+function setRecurrence(tid, recurrence) {
+  const t = tasks.find(x => x.id === tid); if (!t) return;
+  t.recurrence = recurrence;
+  t.modified = Date.now(); save(); render();
 }
 
 function save(){ try{ localStorage.setItem('weekly-planner', JSON.stringify({tasks,deadlines,collapsed})); }catch(e){} scheduleSync(); }
@@ -1000,8 +1086,8 @@ function renderArchive(container) {
 function addTask() {
   const inp=document.getElementById('t-name'), text=inp.value.trim();
   if(!text) return;
-  tasks.push({id:Date.now()+Math.floor(Math.random()*9999),name:text,cat:selCat,scheduledSlots:selSlots.map(s=>({week:s.week,day:s.day})),urgent:addUrgent,done:false,modified:Date.now()});
-  inp.value=''; addUrgent=false; selSlots=[];
+  tasks.push({id:Date.now()+Math.floor(Math.random()*9999),name:text,cat:selCat,scheduledSlots:selSlots.map(s=>({week:s.week,day:s.day})),recurrence:selRecurrence||undefined,urgent:addUrgent,done:false,modified:Date.now()});
+  inp.value=''; addUrgent=false; selSlots=[]; selRecurrence=null;
   document.getElementById('t-urgent').checked=false;
   save(); render();
 }
@@ -1147,6 +1233,110 @@ function openTaskModal(tid) {
     editSection.appendChild(flagRow);
     body.appendChild(editSection);
 
+    // ── Recurrence ──
+    const recSection=document.createElement('div'); recSection.className='modal-section';
+    const recLabel=document.createElement('div'); recLabel.className='modal-section-label'; recLabel.textContent='Recurrence';
+    recSection.appendChild(recLabel);
+
+    const r=t.recurrence||{type:'none',exceptions:[]};
+    let recState={type:r.type||'none',dayOfWeek:r.dayOfWeek||'Mon',weekOfMonth:r.weekOfMonth||1,dayOfMonth:r.dayOfMonth||1,startDate:r.startDate||todayStr(),endDate:r.endDate||'',exceptions:[...(r.exceptions||[])]};
+
+    // Current summary if already set
+    if(t.recurrence&&t.recurrence.type&&t.recurrence.type!=='none'){
+      const summary=document.createElement('div'); summary.style.cssText='font-size:13px;color:var(--accent);margin-bottom:10px;font-weight:500';
+      summary.textContent='↻ '+recurrenceLabel(t.recurrence); recSection.appendChild(summary);
+    }
+
+    // Type picker
+    const typeRow=document.createElement('div'); typeRow.className='recur-field-row';
+    const typeLbl=document.createElement('label'); typeLbl.textContent='Repeat';
+    const typeSel=document.createElement('select'); typeSel.className='recur-select';
+    [{value:'none',label:'Does not repeat'},{value:'weekly',label:'Weekly'},{value:'fortnightly',label:'Fortnightly (every 2 weeks)'},{value:'monthly-date',label:'Monthly by date (e.g. 15th)'},{value:'monthly-day',label:'Monthly by weekday (e.g. 1st Mon)'}].forEach(o=>{
+      const opt=document.createElement('option'); opt.value=o.value; opt.textContent=o.label; if(o.value===recState.type) opt.selected=true; typeSel.appendChild(opt);
+    });
+    typeRow.appendChild(typeLbl); typeRow.appendChild(typeSel); recSection.appendChild(typeRow);
+
+    const dynamicFields=document.createElement('div');
+    recSection.appendChild(dynamicFields);
+
+    // Save / remove buttons — always visible
+    const actionRow=document.createElement('div'); actionRow.style.cssText='display:flex;gap:8px;margin-top:10px;flex-wrap:wrap';
+    const saveRBtn=document.createElement('button'); saveRBtn.className='btn-primary'; saveRBtn.style.cssText='font-size:13px;padding:7px 16px'; saveRBtn.textContent='Save';
+    saveRBtn.addEventListener('click',()=>{ setRecurrence(tid,{...recState}); renderModal(); });
+    actionRow.appendChild(saveRBtn);
+    if(t.recurrence&&t.recurrence.type&&t.recurrence.type!=='none'){
+      const clearBtn=document.createElement('button'); clearBtn.className='btn-secondary'; clearBtn.style.cssText='font-size:13px;padding:7px 14px'; clearBtn.textContent='Remove recurrence';
+      clearBtn.addEventListener('click',()=>{ setRecurrence(tid,{type:'none',exceptions:[]}); renderModal(); });
+      actionRow.appendChild(clearBtn);
+    }
+    recSection.appendChild(actionRow);
+
+    function buildRecFields() {
+      dynamicFields.innerHTML='';
+      if(recState.type==='none') return;
+
+      // Day of week (weekly, fortnightly, monthly-day)
+      if(['weekly','fortnightly','monthly-day'].includes(recState.type)){
+        const row=document.createElement('div'); row.className='recur-field-row';
+        const lbl=document.createElement('label'); lbl.textContent='Day';
+        const sel=document.createElement('select'); sel.className='recur-select';
+        ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; if(d===recState.dayOfWeek) o.selected=true; sel.appendChild(o); });
+        sel.addEventListener('change',()=>{ recState.dayOfWeek=sel.value; });
+        row.appendChild(lbl); row.appendChild(sel); dynamicFields.appendChild(row);
+      }
+
+      // Week of month (monthly-day)
+      if(recState.type==='monthly-day'){
+        const row=document.createElement('div'); row.className='recur-field-row';
+        const lbl=document.createElement('label'); lbl.textContent='Week';
+        const sel=document.createElement('select'); sel.className='recur-select';
+        [{value:1,label:'1st'},{value:2,label:'2nd'},{value:3,label:'3rd'},{value:4,label:'4th'},{value:-1,label:'Last'}].forEach(o=>{ const opt=document.createElement('option'); opt.value=o.value; opt.textContent=o.label; if(o.value==recState.weekOfMonth) opt.selected=true; sel.appendChild(opt); });
+        sel.addEventListener('change',()=>{ recState.weekOfMonth=parseInt(sel.value); });
+        row.appendChild(lbl); row.appendChild(sel); dynamicFields.appendChild(row);
+      }
+
+      // Day of month (monthly-date)
+      if(recState.type==='monthly-date'){
+        const row=document.createElement('div'); row.className='recur-field-row';
+        const lbl=document.createElement('label'); lbl.textContent='Day of month';
+        const inp=document.createElement('input'); inp.type='number'; inp.min='1'; inp.max='31'; inp.value=recState.dayOfMonth; inp.className='recur-date-inp'; inp.style.maxWidth='80px';
+        inp.addEventListener('change',()=>{ recState.dayOfMonth=parseInt(inp.value)||1; });
+        row.appendChild(lbl); row.appendChild(inp); dynamicFields.appendChild(row);
+      }
+
+      // Start date
+      const sRow=document.createElement('div'); sRow.className='recur-field-row';
+      const sLbl=document.createElement('label'); sLbl.textContent='Start date';
+      const sInp=document.createElement('input'); sInp.type='date'; sInp.className='recur-date-inp'; sInp.value=recState.startDate;
+      sInp.addEventListener('change',()=>{ recState.startDate=sInp.value; });
+      sRow.appendChild(sLbl); sRow.appendChild(sInp); dynamicFields.appendChild(sRow);
+
+      // End date (optional)
+      const eRow=document.createElement('div'); eRow.className='recur-field-row';
+      const eLbl=document.createElement('label'); eLbl.textContent='End date';
+      const eInp=document.createElement('input'); eInp.type='date'; eInp.className='recur-date-inp'; eInp.value=recState.endDate; eInp.placeholder='Optional — leave blank for open-ended';
+      eInp.addEventListener('change',()=>{ recState.endDate=eInp.value; });
+      eRow.appendChild(eLbl); eRow.appendChild(eInp); dynamicFields.appendChild(eRow);
+
+      // Exceptions list
+      if(recState.exceptions.length){
+        const exLbl=document.createElement('div'); exLbl.style.cssText='font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-top:14px;margin-bottom:6px'; exLbl.textContent='Skipped dates';
+        dynamicFields.appendChild(exLbl);
+        recState.exceptions.slice().sort().forEach(ex=>{
+          const row=document.createElement('div'); row.className='exception-row';
+          const dt=new Date(ex+'T00:00:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+          const span=document.createElement('span'); span.textContent=dt;
+          const btn=document.createElement('button'); btn.className='icon-btn'; btn.style.cssText='font-size:14px;opacity:0.5'; btn.textContent='×';
+          btn.addEventListener('click',()=>{ recState.exceptions=recState.exceptions.filter(e=>e!==ex); if(t.recurrence) t.recurrence.exceptions=recState.exceptions; t.modified=Date.now(); save(); buildRecFields(); });
+          row.appendChild(span); row.appendChild(btn); dynamicFields.appendChild(row);
+        });
+      }
+    }
+
+    typeSel.addEventListener('change',()=>{ recState.type=typeSel.value; buildRecFields(); });
+    buildRecFields();
+    body.appendChild(recSection);
+
     // ── Subtasks ──
     const stSection=document.createElement('div'); stSection.className='modal-section';
     const stLabel=document.createElement('div'); stLabel.className='modal-section-label'; stLabel.textContent=`Subtasks (${(t.subtasks||[]).length})`;
@@ -1284,6 +1474,7 @@ function taskCard(t, showDays) {
   if(subtasks.length){ const sb=document.createElement('span'); sb.className='tbadge size-badge'; sb.textContent=`${stDone}/${subtasks.length} subtasks`; badges.appendChild(sb); }
   if(t.notes&&t.notes.length){ const nb=document.createElement('span'); nb.className='tbadge size-badge'; nb.textContent=`${t.notes.length} note${t.notes.length>1?'s':''}`; badges.appendChild(nb); }
   if(t.urgent&&!t.done){ const ub=document.createElement('span'); ub.className='tbadge urg-badge'; ub.textContent='Urgent'; badges.appendChild(ub); }
+  if(t.recurrence&&t.recurrence.type&&t.recurrence.type!=='none'){ const rb=document.createElement('span'); rb.className='tbadge recur-badge'; rb.textContent='↻ '+recurrenceLabel(t.recurrence); badges.appendChild(rb); }
   if(t.done){ const db2=document.createElement('span'); db2.className='tbadge done-badge'; db2.textContent='Done'; badges.appendChild(db2); }
   ta.appendChild(tn); ta.appendChild(badges);
 
@@ -1503,6 +1694,65 @@ function renderAddForm() {
   });
   calWrap.appendChild(calPicker.el);
 
+  // ── Recurrence fields (below calendar) ──
+  const recurWrap=document.createElement('div'); recurWrap.style.cssText='margin-top:10px;padding-top:10px;border-top:0.5px solid var(--border)';
+  const recurLbl=document.createElement('div'); recurLbl.style.cssText='font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px'; recurLbl.textContent='Repeat';
+  recurWrap.appendChild(recurLbl);
+
+  let recurState={type:'none',dayOfWeek:'Mon',weekOfMonth:1,dayOfMonth:1,startDate:todayStr(),endDate:''};
+
+  const rTypeRow=document.createElement('div'); rTypeRow.style.cssText='display:flex;gap:8px;margin-bottom:8px;align-items:center';
+  const rTypeSel=document.createElement('select'); rTypeSel.className='af-select'; rTypeSel.style.cssText='flex:1;height:34px;font-size:13px';
+  [{value:'none',label:'Does not repeat'},{value:'weekly',label:'Weekly'},{value:'fortnightly',label:'Fortnightly'},{value:'monthly-date',label:'Monthly by date'},{value:'monthly-day',label:'Monthly by weekday'}].forEach(o=>{
+    const opt=document.createElement('option'); opt.value=o.value; opt.textContent=o.label; rTypeSel.appendChild(opt);
+  });
+  rTypeRow.appendChild(rTypeSel); recurWrap.appendChild(rTypeRow);
+
+  const rDynamicFields=document.createElement('div');
+  recurWrap.appendChild(rDynamicFields);
+
+  function buildAddRecFields(){
+    rDynamicFields.innerHTML='';
+    selRecurrence = recurState.type==='none' ? null : {...recurState};
+    if(recurState.type==='none') return;
+
+    const fRow=(lbl,el)=>{ const r=document.createElement('div'); r.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:6px'; const l=document.createElement('span'); l.style.cssText='font-size:12px;color:var(--text2);min-width:90px'; l.textContent=lbl; r.appendChild(l); r.appendChild(el); rDynamicFields.appendChild(r); };
+
+    if(['weekly','fortnightly','monthly-day'].includes(recurState.type)){
+      const sel=document.createElement('select'); sel.className='af-select'; sel.style.cssText='flex:1;height:32px;font-size:13px';
+      ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; if(d===recurState.dayOfWeek) o.selected=true; sel.appendChild(o); });
+      sel.addEventListener('change',()=>{ recurState.dayOfWeek=sel.value; selRecurrence={...recurState}; });
+      fRow('Day',sel);
+    }
+    if(recurState.type==='monthly-day'){
+      const sel=document.createElement('select'); sel.className='af-select'; sel.style.cssText='flex:1;height:32px;font-size:13px';
+      [{value:1,label:'1st'},{value:2,label:'2nd'},{value:3,label:'3rd'},{value:4,label:'4th'},{value:-1,label:'Last'}].forEach(o=>{ const opt=document.createElement('option'); opt.value=o.value; opt.textContent=o.label; if(o.value==recurState.weekOfMonth) opt.selected=true; sel.appendChild(opt); });
+      sel.addEventListener('change',()=>{ recurState.weekOfMonth=parseInt(sel.value); selRecurrence={...recurState}; });
+      fRow('Week',sel);
+    }
+    if(recurState.type==='monthly-date'){
+      const inp=document.createElement('input'); inp.type='number'; inp.min='1'; inp.max='31'; inp.value=recurState.dayOfMonth; inp.className='af-select'; inp.style.cssText='width:70px;height:32px;font-size:13px';
+      inp.addEventListener('change',()=>{ recurState.dayOfMonth=parseInt(inp.value)||1; selRecurrence={...recurState}; });
+      fRow('Day of month',inp);
+    }
+
+    // Start date — defaults to earliest selected slot date or today
+    const earliestSlot=selSlots.length ? selSlots.slice().sort((a,b)=>a.week.localeCompare(b.week))[0] : null;
+    if(earliestSlot && !recurState._startDateSet) { recurState.startDate=earliestSlot.week; } // use week Monday as proxy
+    const sInp=document.createElement('input'); sInp.type='date'; sInp.className='af-select'; sInp.style.cssText='flex:1;height:32px;font-size:13px'; sInp.value=recurState.startDate;
+    sInp.addEventListener('change',()=>{ recurState.startDate=sInp.value; recurState._startDateSet=true; selRecurrence={...recurState}; });
+    fRow('Start date',sInp);
+
+    // End date
+    const eInp=document.createElement('input'); eInp.type='date'; eInp.className='af-select'; eInp.style.cssText='flex:1;height:32px;font-size:13px'; eInp.value=recurState.endDate; eInp.placeholder='Optional';
+    eInp.addEventListener('change',()=>{ recurState.endDate=eInp.value; selRecurrence={...recurState}; });
+    fRow('End date',eInp);
+  }
+
+  rTypeSel.addEventListener('change',()=>{ recurState.type=rTypeSel.value; buildAddRecFields(); });
+  buildAddRecFields();
+  calWrap.appendChild(recurWrap);
+
   schedBtn.addEventListener('click', e=>{ e.stopPropagation(); const open=calWrap.style.display==='block'; calWrap.style.display=open?'none':'block'; renderSelChips(); });
 
   r3.appendChild(schedBtn);
@@ -1538,51 +1788,74 @@ function render() {
   document.getElementById('stats').innerHTML=`<div class="stat"><div class="stat-n">${active.length}</div><div class="stat-l">Active</div></div><div class="stat"><div class="stat-n" style="color:#1D9E75">${doneThisWeek}</div><div class="stat-l">Done this week</div></div><div class="stat"><div class="stat-n" style="color:#E24B4A">${urgent}</div><div class="stat-l">Urgent</div></div>`;
 
   const main=document.getElementById('main'); main.innerHTML='';
-  const mkey=getMondayStr(weekOffset);
 
   if(!isAuthed()) maybeSilentRefresh();
-  if(isAuthed() && !calCache[mkey] && !calFetching.has(mkey)) fetchCalendarWeek(mkey);
-
-  const cached=getCalData(mkey);
-  const calH=cached ? cached.calH : {};
-  const calData=cached ? cached.calData : {};
-  const calLoading=calFetching.has(mkey);
 
   renderDeadlines(main);
 
   if(view==='day'){
+    // Rolling 7-day window starting from today
+    const todayD=new Date(); todayD.setHours(0,0,0,0);
+    const windowDays=[]; // [{date, dateStr, week, dayName, label}]
+    const DAY_NAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    for(let i=0;i<7;i++){
+      const d=new Date(todayD); d.setDate(todayD.getDate()+i);
+      const dateStr=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const dow=d.getDay(); // 0=Sun
+      const diff=dow===0?-6:1-dow;
+      const mon=new Date(d); mon.setDate(d.getDate()+diff);
+      const week=`${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,'0')}-${String(mon.getDate()).padStart(2,'0')}`;
+      const dayName=DAY_NAMES[dow];
+      const label=i===0?'Today':DAY_NAMES[dow].slice(0,3)+' '+d.getDate();
+      windowDays.push({date:d,dateStr,week,dayName,label});
+    }
+
+    // Ensure all relevant weeks are fetched for calendar
+    const weeksNeeded=[...new Set(windowDays.map(x=>x.week))];
+    weeksNeeded.forEach(w=>{ if(isAuthed()&&!calCache[w]&&!calFetching.has(w)) fetchCalendarWeek(w); });
+    const calLoading=weeksNeeded.some(w=>calFetching.has(w));
+    const calCached=weeksNeeded.every(w=>!!calCache[w]);
+
+    // Ensure selDay is within the window; reset to today if not
+    if(!windowDays.find(x=>x.dateStr===selDay)) selDay=windowDays[0].dateStr;
+    const selWindow=windowDays.find(x=>x.dateStr===selDay)||windowDays[0];
+
     const lbl=document.createElement('div'); lbl.className='section-label';
-    const lblText=document.createElement('span'); lblText.textContent='Week at a glance';
+    const lblText=document.createElement('span'); lblText.textContent='Next 7 days';
     lbl.appendChild(lblText);
-    if(!cached && calLoading){
+    if(calLoading&&!calCached){
       const spin=document.createElement('span'); spin.style.cssText='font-size:11px;color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;animation:pulse 1.2s ease-in-out infinite'; spin.textContent='Syncing…'; lbl.appendChild(spin);
     } else if(isAuthed()){
       const rfbtn=document.createElement('button'); rfbtn.className='nb'; rfbtn.style.cssText='font-size:11px;padding:2px 8px'; rfbtn.textContent='↻ Refresh';
-      rfbtn.addEventListener('click',()=>{ delete calCache[mkey]; try{ const s=JSON.parse(localStorage.getItem('calCache')||'{}'); delete s[mkey]; localStorage.setItem('calCache',JSON.stringify(s)); }catch(e){} calFetching.delete(mkey); render(); });
+      rfbtn.addEventListener('click',()=>{ weeksNeeded.forEach(w=>{ delete calCache[w]; calFetching.delete(w); try{ const s=JSON.parse(localStorage.getItem('calCache')||'{}'); delete s[w]; localStorage.setItem('calCache',JSON.stringify(s)); }catch(e){} }); render(); });
       lbl.appendChild(rfbtn);
     }
     main.appendChild(lbl);
 
-    // Row labels
+    // Day tabs row
     const rowLabels=document.createElement('div'); rowLabels.style.cssText='display:grid;grid-template-columns:44px repeat(7,minmax(0,1fr));gap:4px;margin-bottom:2px';
-    const blank=document.createElement('div');
-    rowLabels.appendChild(blank);
-    DAYS.forEach(d=>{
-      const tab=document.createElement('button'); tab.className='day-tab'+(d===selDay?' active':'');
-      const tc=tasks.filter(t=>!t.done&&!t.deleted&&(t.scheduledSlots||[]).some(s=>s.week===mkey&&s.day===d)).length;
-      tab.textContent=d+(tc>0?` ${tc}`:'');
-      tab.addEventListener('click',()=>{ selDay=d; render(); });
+    rowLabels.appendChild(document.createElement('div'));
+    windowDays.forEach(wd=>{
+      const tab=document.createElement('button'); tab.className='day-tab'+(wd.dateStr===selDay?' active':'');
+      const slotted=tasks.filter(t=>!t.done&&!t.deleted&&(t.scheduledSlots||[]).some(s=>s.week===wd.week&&s.day===wd.dayName)).length;
+      const recurring=tasks.filter(t=>!t.done&&!t.deleted&&occursOn(t,wd.dateStr)).length;
+      const tc=slotted+recurring;
+      tab.innerHTML=`<span style="display:block;font-size:10px;opacity:0.75">${wd.label}</span>${tc>0?`<span>${tc}</span>`:''}`;
+      tab.style.lineHeight='1.3';
+      tab.addEventListener('click',()=>{ selDay=wd.dateStr; render(); });
       rowLabels.appendChild(tab);
     });
     main.appendChild(rowLabels);
 
-    // Tasks row
+    // Tasks count row
     const tasksRow=document.createElement('div'); tasksRow.style.cssText='display:grid;grid-template-columns:44px repeat(7,minmax(0,1fr));gap:4px;margin-bottom:3px';
     const tRowLbl=document.createElement('div'); tRowLbl.style.cssText='font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.04em;display:flex;align-items:center;justify-content:flex-end;padding-right:4px;line-height:1.2'; tRowLbl.textContent='Tasks';
     tasksRow.appendChild(tRowLbl);
     let totalTaskPlanned=0;
-    DAYS.forEach(d=>{
-      const taskCount=tasks.filter(t=>!t.done&&!t.deleted&&(t.scheduledSlots||[]).some(s=>s.week===mkey&&s.day===d)).length;
+    windowDays.forEach(wd=>{
+      const slotCount=tasks.filter(t=>!t.done&&!t.deleted&&(t.scheduledSlots||[]).some(s=>s.week===wd.week&&s.day===wd.dayName)).length;
+      const recurCount=tasks.filter(t=>!t.done&&!t.deleted&&occursOn(t,wd.dateStr)).length;
+      const taskCount=slotCount+recurCount;
       totalTaskPlanned+=taskCount;
       const col=hoursColor(taskCount);
       const hbox=document.createElement('div'); hbox.className=`hbox ${col}`;
@@ -1596,8 +1869,10 @@ function render() {
     const cRowLbl=document.createElement('div'); cRowLbl.style.cssText='font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.04em;display:flex;align-items:center;justify-content:flex-end;padding-right:4px;line-height:1.2'; cRowLbl.textContent='Cal';
     calRow.appendChild(cRowLbl);
     let totalCal=0;
-    DAYS.forEach(d=>{
-      const calHours=calH[d]||0; totalCal+=calHours;
+    windowDays.forEach(wd=>{
+      const wCalData=calCache[wd.week];
+      const calHours=wCalData ? (wCalData.calH[wd.dayName]||0) : 0;
+      totalCal+=calHours;
       const col=hoursColor(calHours);
       const hbox=document.createElement('div'); hbox.className=`hbox ${col}`;
       hbox.innerHTML=`<div class="hbox-n">${calHours>0?calHours.toFixed(1)+'h':'—'}</div>`;
@@ -1606,33 +1881,78 @@ function render() {
     main.appendChild(calRow);
 
     const ws=document.createElement('div'); ws.className='week-summary';
-    if(!isAuthed()) ws.textContent=`${totalTaskPlanned} task${totalTaskPlanned!==1?'s':''} planned this week`;
-    else if(calLoading&&!cached) ws.textContent='Loading calendar…';
+    if(!isAuthed()) ws.textContent=`${totalTaskPlanned} task${totalTaskPlanned!==1?'s':''} in next 7 days`;
+    else if(calLoading&&!calCached) ws.textContent='Loading calendar…';
     else ws.textContent=`${totalTaskPlanned} task${totalTaskPlanned!==1?'s':''} · ${totalCal.toFixed(1)}h calendar`;
     main.appendChild(ws);
 
-    const calEvs=calData[selDay]||[];
+    // Calendar events for selected day
+    const wCalData=calCache[selWindow.week];
+    const calEvs=wCalData ? (wCalData.calData[selWindow.dayName]||[]) : [];
     if(calEvs.length){
-      const cl=document.createElement('div'); cl.className='section-label'; cl.textContent=`Calendar — ${selDay}`; main.appendChild(cl);
+      const cl=document.createElement('div'); cl.className='section-label'; cl.textContent=`Calendar — ${selWindow.label}`; main.appendChild(cl);
       const cc=document.createElement('div'); cc.className='cal-card';
       calEvs.forEach(ev=>{ const r=document.createElement('div'); r.className='cal-ev'; r.innerHTML=`<div class="cal-dot"></div><span class="cal-time">${ev.time}</span><span class="cal-title">${ev.title}</span>`; cc.appendChild(r); });
       main.appendChild(cc);
-    } else if(isAuthed()&&calLoading&&!cached){
-      const cl=document.createElement('div'); cl.className='section-label'; cl.textContent=`Calendar — ${selDay}`; main.appendChild(cl);
+    } else if(isAuthed()&&calLoading&&!calCached){
+      const cl=document.createElement('div'); cl.className='section-label'; cl.textContent=`Calendar — ${selWindow.label}`; main.appendChild(cl);
       const ph=document.createElement('div'); ph.className='cal-card'; ph.innerHTML=`<div class="cal-ev" style="justify-content:center;color:var(--text3);font-size:13px;font-style:italic">Loading events…</div>`; main.appendChild(ph);
     }
 
-    const dayTasks=tasks.filter(t=>!t.done&&!t.deleted&&(t.scheduledSlots||[]).some(s=>s.week===mkey&&s.day===selDay)).sort((a,b)=>(b.urgent?1:0)-(a.urgent?1:0));
-    const tl=document.createElement('div'); tl.className='section-label'; tl.textContent=`Tasks — ${selDay}`; main.appendChild(tl);
+    const slottedTasks=tasks.filter(t=>!t.done&&!t.deleted&&(t.scheduledSlots||[]).some(s=>s.week===selWindow.week&&s.day===selWindow.dayName));
+    const recurringTasks=tasks.filter(t=>!t.done&&!t.deleted&&occursOn(t,selWindow.dateStr)&&!(t.scheduledSlots||[]).some(s=>s.week===selWindow.week&&s.day===selWindow.dayName));
+    const dayTasks=[...slottedTasks,...recurringTasks].sort((a,b)=>(b.urgent?1:0)-(a.urgent?1:0));
+    const tl=document.createElement('div'); tl.className='section-label'; tl.textContent=`Tasks — ${selWindow.label}`; main.appendChild(tl);
     if(!dayTasks.length){ const em=document.createElement('div'); em.className='empty-msg'; em.textContent='No tasks planned for this day'; main.appendChild(em); }
-    else{ dayTasks.forEach(t=>main.appendChild(taskCard(t,false))); }
+    else{
+      dayTasks.forEach(t=>{
+        const wrap=document.createElement('div'); wrap.style.cssText='position:relative';
+        wrap.appendChild(taskCard(t,false));
+        // Skip button for recurring tasks
+        if(occursOn(t,selWindow.dateStr)){
+          const skipBtn=document.createElement('button'); skipBtn.className='log-btn';
+          skipBtn.style.cssText='font-size:11px;padding:3px 8px;position:absolute;top:12px;right:52px;z-index:2';
+          skipBtn.textContent='Skip date';
+          skipBtn.addEventListener('click',e=>{ e.stopPropagation(); skipOccurrence(t.id,selWindow.dateStr); });
+          wrap.appendChild(skipBtn);
+        }
+        main.appendChild(wrap);
+      });
+    }
     main.appendChild(renderAddForm());
 
   } else if(view==='tasks') {
     main.appendChild(renderAddForm());
     const tl=document.createElement('div'); tl.className='section-label'; tl.textContent='All tasks'; main.appendChild(tl);
+
+    // Recurring tasks block (collapsed by default)
+    const recurringAll=tasks.filter(t=>!t.deleted&&!t.done&&t.recurrence&&t.recurrence.type&&t.recurrence.type!=='none');
+    if(recurringAll.length){
+      const isRecurOpen=collapsed['__recurring']===false; // default collapsed
+      const rBlock=document.createElement('div'); rBlock.className='recur-block';
+      const rHdr=document.createElement('div'); rHdr.className='recur-hdr'+(isRecurOpen?' open':'');
+      rHdr.innerHTML=`<span style="font-size:16px">↻</span><span class="recur-hdr-title">Recurring tasks</span><span class="recur-hdr-meta">${recurringAll.length} task${recurringAll.length>1?'s':''}</span><span style="font-size:14px;color:var(--text3)">${isRecurOpen?'▴':'▾'}</span>`;
+      rHdr.addEventListener('click',()=>{ collapsed['__recurring']=isRecurOpen?undefined:false; save(); render(); });
+      rBlock.appendChild(rHdr);
+      if(isRecurOpen){
+        recurringAll.forEach(t=>{
+          const cat=CATS.find(c=>c.id===t.cat)||CATS[0];
+          const row=document.createElement('div'); row.style.cssText='display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-top:0.5px solid var(--border)';
+          const dot=document.createElement('div'); dot.style.cssText=`width:8px;height:8px;border-radius:50%;background:${cat.color};flex-shrink:0;margin-top:5px`;
+          const info=document.createElement('div'); info.style.cssText='flex:1;min-width:0';
+          const nm=document.createElement('div'); nm.style.cssText='font-size:14px;font-weight:500'; nm.textContent=t.name;
+          const rl=document.createElement('div'); rl.className='recur-rule-lbl'; rl.textContent='↻ '+recurrenceLabel(t.recurrence);
+          info.appendChild(nm); info.appendChild(rl);
+          const editBtn=document.createElement('button'); editBtn.className='icon-btn'; editBtn.style.cssText='font-size:20px;opacity:0.55'; editBtn.textContent='✎';
+          editBtn.addEventListener('click',e=>{ e.stopPropagation(); openTaskModal(t.id); });
+          row.appendChild(dot); row.appendChild(info); row.appendChild(editBtn);
+          rBlock.appendChild(row);
+        });
+      }
+      main.appendChild(rBlock);
+    }
     CATS.forEach(c=>{
-      const ct=tasks.filter(t=>t.cat===c.id&&!t.deleted&&!t.done); if(!ct.length) return;
+      const ct=tasks.filter(t=>t.cat===c.id&&!t.deleted&&!t.done&&!(t.recurrence&&t.recurrence.type&&t.recurrence.type!=='none')); if(!ct.length) return;
       const isOpen=!collapsed[c.id];
       const block=document.createElement('div'); block.className='cat-block';
       block.style.borderLeft=`3px solid ${c.color}`;
