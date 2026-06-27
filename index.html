@@ -46,7 +46,7 @@ body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
 .toggle-wrap { display: flex; border: 0.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 12px; }
 .tog { font-size: 13px; padding: 6px 16px; background: none; border: none; cursor: pointer; color: var(--text2); font-family: inherit; flex: 1; }
 .tog.active { background: var(--bg2); color: var(--text); font-weight: 600; }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
 .stat { background: var(--bg2); border-radius: var(--radius-sm); padding: 10px 12px; text-align: center; }
 .stat-n { font-size: 20px; font-weight: 600; line-height: 1.2; }
 .stat-l { font-size: 10px; color: var(--text3); margin-top: 2px; }
@@ -230,8 +230,8 @@ body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
       <button class="tog" id="tog-tasks">&#9776; All tasks</button>
       <button class="tog" id="tog-archive">&#10003; Archive</button>
     </div>
-    <div class="stats" id="stats"></div>
   </div>
+  <div class="stats" id="stats"></div>
   <div id="auth-area"></div>
   <div id="main"></div>
 </div>
