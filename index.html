@@ -649,7 +649,7 @@ function scheduleSync() {
 
 // ─── APP STATE ────────────────────────────────────────────────────────────────
 function todayStr(){ const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; }
-let weekOffset=0, view='day', selDay=todayStr(), searchQuery='';
+let weekOffset=0, view='day', selDay=todayStr(), searchQuery='', urgentFilter=false;
 let deadlines=[], tasks=[], collapsed={};
 let selSlots=[], selRecurrence=null, addUrgent=false, selCat='writing';
 // selSlots: [{week:'2026-06-30', day:'Mon', hours:1}, ...]
@@ -856,6 +856,7 @@ function renderTodayBanner(container) {
     else if(a.tag==='recur'){ tag.className+=' today-tag-recur'; tag.textContent='↻ Recurring'; }
     else { tag.style.display='none'; }
     row.appendChild(dot); row.appendChild(name); row.appendChild(tag);
+    if(a.tag==='urgent'){ row.style.cursor='pointer'; row.addEventListener('click',()=>setView('tasks',true)); }
     banner.appendChild(row);
   });
 
@@ -1417,7 +1418,7 @@ function reorderTask(catId, fromIdx, toIdx) {
   catTasks.forEach((t,i) => { t.order=i; t.modified=Date.now(); });
   save(); render();
 }
-function setView(v){ searchQuery=''; view=v; document.getElementById('tog-day').className='tog'+(v==='day'?' active':''); document.getElementById('tog-tasks').className='tog'+(v==='tasks'?' active':''); document.getElementById('tog-archive').className='tog'+(v==='archive'?' active':''); render(); }
+function setView(v, filterUrgent){ searchQuery=''; view=v; if(filterUrgent!==undefined) urgentFilter=!!filterUrgent; else if(v!=='tasks') urgentFilter=false; document.getElementById('tog-day').className='tog'+(v==='day'?' active':''); document.getElementById('tog-tasks').className='tog'+(v==='tasks'?' active':''); document.getElementById('tog-archive').className='tog'+(v==='archive'?' active':''); render(); }
 
 // ─── SUBTASK HELPERS ──────────────────────────────────────────────────────────
 // Subtasks/notes are nested in the parent task, so they sync as part of it:
@@ -2208,7 +2209,8 @@ function render() {
   const urgent=active.filter(t=>t.urgent).length;
   const wStart=getMonday(weekOffset).getTime(), wEnd=wStart+7*864e5;
   const doneThisWeek=done.filter(t=>t.doneAt&&t.doneAt>=wStart&&t.doneAt<wEnd).length;
-  document.getElementById('stats').innerHTML=`<div class="stat"><div class="stat-n">${active.length}</div><div class="stat-l">Active</div></div><div class="stat"><div class="stat-n" style="color:#1D9E75">${doneThisWeek}</div><div class="stat-l">Done this week</div></div><div class="stat"><div class="stat-n" style="color:#E24B4A">${urgent}</div><div class="stat-l">Urgent</div></div>`;
+  document.getElementById('stats').innerHTML=`<div class="stat"><div class="stat-n">${active.length}</div><div class="stat-l">Active</div></div><div class="stat"><div class="stat-n" style="color:#1D9E75">${doneThisWeek}</div><div class="stat-l">Done this week</div></div><div class="stat stat-urgent-btn" style="cursor:pointer" title="Show urgent tasks"><div class="stat-n" style="color:#E24B4A">${urgent}</div><div class="stat-l">Urgent</div></div>`;
+  document.querySelector('.stat-urgent-btn')?.addEventListener('click',()=>setView('tasks',true));
 
   const main=document.getElementById('main'); main.innerHTML='';
 
@@ -2356,11 +2358,19 @@ function render() {
       const tl=document.createElement('div'); tl.className='section-label'; tl.textContent=`Results for "${searchQuery}"`; main.appendChild(tl);
       renderSearchResults(main, searchQuery);
     } else {
-      const tl=document.createElement('div'); tl.className='section-label'; tl.textContent='All tasks'; main.appendChild(tl);
+      const tl=document.createElement('div'); tl.className='section-label'; tl.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px';
+      const tlText=document.createElement('span'); tlText.textContent='All tasks'; tl.appendChild(tlText);
+      // Urgent filter pill
+      const urgentPill=document.createElement('button');
+      urgentPill.textContent='⚑ Urgent only';
+      urgentPill.style.cssText=`font-size:12px;font-family:inherit;border-radius:20px;padding:3px 10px;border:1px solid ${urgentFilter?'#E24B4A':'var(--border2)'};background:${urgentFilter?'#FCEBEB':'var(--bg2)'};color:${urgentFilter?'#A32D2D':'var(--text2)'};cursor:pointer;font-weight:${urgentFilter?'600':'400'}`;
+      urgentPill.addEventListener('click',()=>{ urgentFilter=!urgentFilter; render(); });
+      tl.appendChild(urgentPill);
+      main.appendChild(tl);
 
       // Recurring tasks block (collapsed by default)
       const recurringAll=tasks.filter(t=>!t.deleted&&!t.done&&t.recurrence&&t.recurrence.type&&t.recurrence.type!=='none');
-      if(recurringAll.length){
+      if(recurringAll.length&&!urgentFilter){
         const isRecurOpen=collapsed['__recurring']===false;
         const rBlock=document.createElement('div'); rBlock.className='recur-block';
         const rHdr=document.createElement('div'); rHdr.className='recur-hdr'+(isRecurOpen?' open':'');
@@ -2386,7 +2396,7 @@ function render() {
       }
 
       CATS.forEach(c=>{
-        const ct=sortedByCat(tasks.filter(t=>t.cat===c.id&&!t.deleted&&!t.done&&!(t.recurrence&&t.recurrence.type&&t.recurrence.type!=='none')));
+        const ct=sortedByCat(tasks.filter(t=>t.cat===c.id&&!t.deleted&&!t.done&&!(t.recurrence&&t.recurrence.type&&t.recurrence.type!=='none')&&(!urgentFilter||t.urgent)));
         if(!ct.length) return;
         const isOpen=!collapsed[c.id];
         const block=document.createElement('div'); block.className='cat-block';
@@ -2422,7 +2432,7 @@ document.getElementById('prev').addEventListener('click',()=>{ weekOffset--; ren
 document.getElementById('next').addEventListener('click',()=>{ weekOffset++; render(); });
 document.getElementById('todaybtn').addEventListener('click',()=>{ weekOffset=0; render(); });
 document.getElementById('tog-day').addEventListener('click',()=>setView('day'));
-document.getElementById('tog-tasks').addEventListener('click',()=>setView('tasks'));
+document.getElementById('tog-tasks').addEventListener('click',()=>{ urgentFilter=false; setView('tasks'); });
 document.getElementById('tog-archive').addEventListener('click',()=>setView('archive'));
 
 // Close any open custom-select dropdown when clicking elsewhere (single global handler)
