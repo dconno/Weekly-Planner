@@ -74,6 +74,18 @@ body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
 .dl-badge.crit { background: #F09595; color: #501313; }
 .dl-badge.warn { background: #FAC775; color: #412402; }
 .dl-badge.ok { background: var(--bg3); color: var(--text2); }
+.dl-block { border-radius: var(--radius-sm); border: 0.5px solid var(--border); background: var(--bg2); overflow: hidden; }
+.dl-block.warn { border-color: #EF9F27; }
+.dl-block.crit { border-color: #F09595; }
+.dl-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; user-select: none; }
+.dl-row.warn { background: #FAEEDA; }
+.dl-row.crit { background: #FCEBEB; }
+.dl-panel { border-top: 0.5px solid var(--border); padding: 10px 12px 12px; display: none; }
+.dl-panel.open { display: block; }
+.dl-task-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 0.5px solid var(--border); }
+.dl-task-row:last-of-type { border-bottom: none; }
+.dl-edit-form { background: var(--bg3); border-radius: var(--radius-sm); padding: 10px; margin-bottom: 10px; display: none; }
+.dl-edit-form.open { display: block; }
 .icon-btn { background: none; border: none; cursor: pointer; color: var(--text3); padding: 2px; font-size: 18px; line-height: 1; opacity: 0.5; }
 .icon-btn:active { opacity: 1; }
 
@@ -1129,20 +1141,120 @@ function renderDeadlines(container) {
     [...liveDeadlines].sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(dl => {
       const d=daysUntil(dl.date), crit=d<=7&&d>=0, warn=d>7&&d<=28, past=d<0;
       const ti=DL_TYPES[dl.type]||DL_TYPES.milestone;
+      const isOpen=collapsed['dl_'+dl.id]===true;
+      const dlTasks=tasks.filter(t=>t.deadlineId===dl.id&&!t.deleted);
+
+      // Wrapper block
+      const block=document.createElement('div'); block.className='dl-block'+(crit?' crit':warn?' warn':'');
+
+      // Header row (clickable to expand)
       const row=document.createElement('div'); row.className='dl-row'+(crit?' crit':warn?' warn':'');
       const dot=document.createElement('div'); dot.className='dl-dot'; dot.style.background=ti.color;
+      const nameWrap=document.createElement('div'); nameWrap.style.cssText='flex:1;min-width:0';
       const name=document.createElement('span'); name.className='dl-name'; name.textContent=dl.name;
+      if(dlTasks.length){
+        const tc=document.createElement('span'); tc.style.cssText='font-size:10px;color:var(--text3);margin-left:6px';
+        const done=dlTasks.filter(t=>t.done).length;
+        tc.textContent=`${done}/${dlTasks.length}`; name.appendChild(tc);
+      }
+      nameWrap.appendChild(name);
       const dateSpan=document.createElement('span'); dateSpan.className='dl-date'; dateSpan.textContent=new Date(dl.date+'T00:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});
       const badge=document.createElement('span'); badge.className='dl-badge '+(crit?'crit':warn?'warn':'ok'); badge.textContent=past?'Overdue':d===0?'Today':`${d}d`;
+
+      // Edit button
+      const editBtn=document.createElement('button'); editBtn.className='icon-btn'; editBtn.style.cssText='font-size:16px;opacity:0.5'; editBtn.textContent='✎';
+      editBtn.addEventListener('click',e=>{ e.stopPropagation(); editForm.classList.toggle('open'); });
+
+      // Delete button
       const del=document.createElement('button'); del.className='icon-btn'; del.textContent='×';
-      del.addEventListener('click',()=>{ const dl2=deadlines.find(x=>x.id===dl.id); if(dl2){ dl2.deleted=true; dl2.modified=Date.now(); } save(); render(); });
-      row.appendChild(dot); row.appendChild(name); row.appendChild(dateSpan); row.appendChild(badge); row.appendChild(del);
-      list.appendChild(row);
+      del.addEventListener('click',e=>{ e.stopPropagation(); const dl2=deadlines.find(x=>x.id===dl.id); if(dl2){ dl2.deleted=true; dl2.modified=Date.now(); } save(); render(); });
+
+      // Chevron
+      const chev=document.createElement('span'); chev.style.cssText='font-size:12px;color:var(--text3)'; chev.textContent=isOpen?'▴':'▾';
+
+      row.appendChild(dot); row.appendChild(nameWrap); row.appendChild(dateSpan); row.appendChild(badge); row.appendChild(editBtn); row.appendChild(del); row.appendChild(chev);
+      block.appendChild(row);
+
+      // Edit form (inline, hidden by default)
+      const editForm=document.createElement('div'); editForm.className='dl-edit-form';
+      const efRow1=document.createElement('div'); efRow1.className='iform-row';
+      const efName=document.createElement('input'); efName.type='text'; efName.value=dl.name; efName.style.flex='1'; efName.className='af-input';
+      const efDate=document.createElement('input'); efDate.type='date'; efDate.value=dl.date; efDate.style.cssText='width:140px;flex:none'; efDate.className='af-input';
+      efRow1.appendChild(efName); efRow1.appendChild(efDate);
+      const efRow2=document.createElement('div'); efRow2.className='iform-row';
+      const efType=document.createElement('select'); efType.style.flex='1'; efType.className='af-select';
+      [{value:'milestone',label:'PhD milestone'},{value:'abstract',label:'Abstract / conference'},{value:'grant',label:'Grant application'},{value:'paper',label:'Paper submission'}].forEach(o=>{ const opt=document.createElement('option'); opt.value=o.value; opt.textContent=o.label; if(o.value===dl.type) opt.selected=true; efType.appendChild(opt); });
+      efRow2.appendChild(efType);
+      const efBtns=document.createElement('div'); efBtns.className='iform-btns';
+      const efSave=document.createElement('button'); efSave.className='btn-primary'; efSave.textContent='Save';
+      efSave.addEventListener('click',()=>{
+        const n=efName.value.trim(), dt=efDate.value, ty=efType.value;
+        if(!n||!dt) return;
+        const dl2=deadlines.find(x=>x.id===dl.id);
+        if(dl2){ dl2.name=n; dl2.date=dt; dl2.type=ty; dl2.modified=Date.now(); }
+        save(); render();
+      });
+      const efCancel=document.createElement('button'); efCancel.className='btn-secondary'; efCancel.textContent='Cancel';
+      efCancel.addEventListener('click',()=>editForm.classList.remove('open'));
+      efBtns.appendChild(efSave); efBtns.appendChild(efCancel);
+      editForm.appendChild(efRow1); editForm.appendChild(efRow2); editForm.appendChild(efBtns);
+      block.appendChild(editForm);
+
+      // Expand panel
+      const panel=document.createElement('div'); panel.className='dl-panel'+(isOpen?' open':'');
+
+      // Linked tasks
+      function renderDlTasks(){
+        panel.querySelectorAll('.dl-task-row').forEach(r=>r.remove());
+        const linked=tasks.filter(t=>t.deadlineId===dl.id&&!t.deleted);
+        linked.forEach(t=>{
+          const tr=document.createElement('div'); tr.className='dl-task-row';
+          const ck=document.createElement('input'); ck.type='checkbox'; ck.checked=!!t.done;
+          ck.style.cssText='width:16px;height:16px;accent-color:var(--green);cursor:pointer;flex-shrink:0';
+          ck.addEventListener('change',()=>{ t.done=ck.checked; t.doneAt=ck.checked?Date.now():null; t.modified=Date.now(); save(); nm.className=''; if(t.done) nm.style.textDecoration='line-through'; else nm.style.textDecoration=''; });
+          const nm=document.createElement('span'); nm.style.cssText='font-size:13px;flex:1;min-width:0'+(t.done?';text-decoration:line-through;color:var(--text3)':''); nm.textContent=t.name;
+          const cat=CATS.find(c=>c.id===t.cat)||CATS[0];
+          const catDot=document.createElement('div'); catDot.style.cssText=`width:6px;height:6px;border-radius:50%;background:${cat.color};flex-shrink:0`;
+          const editT=document.createElement('button'); editT.className='icon-btn'; editT.style.cssText='font-size:15px;opacity:0.45'; editT.textContent='✎';
+          editT.addEventListener('click',e=>{ e.stopPropagation(); openTaskModal(t.id); });
+          tr.appendChild(ck); tr.appendChild(catDot); tr.appendChild(nm); tr.appendChild(editT);
+          panel.insertBefore(tr, qaRow);
+        });
+      }
+
+      // Quick-add task input
+      const qaRow=document.createElement('div'); qaRow.style.cssText='display:flex;gap:8px;margin-top:8px';
+      const qaInp=document.createElement('input'); qaInp.type='text'; qaInp.placeholder='Add task…';
+      qaInp.style.cssText='flex:1;font-size:13px;font-family:inherit;height:30px;padding:0 10px;border:0.5px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg);color:var(--text)';
+      const qaBtn=document.createElement('button'); qaBtn.className='btn-primary'; qaBtn.style.cssText='font-size:12px;padding:4px 10px;white-space:nowrap'; qaBtn.textContent='+ Add';
+      const doAdd=()=>{
+        const v=qaInp.value.trim(); if(!v) return;
+        tasks.push({id:Date.now()+Math.floor(Math.random()*9999),name:v,cat:'other',deadlineId:dl.id,scheduledSlots:[],urgent:false,done:false,modified:Date.now()});
+        qaInp.value=''; save(); renderDlTasks();
+      };
+      qaBtn.addEventListener('click',doAdd);
+      qaInp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doAdd(); } });
+      qaRow.appendChild(qaInp); qaRow.appendChild(qaBtn);
+      panel.appendChild(qaRow);
+      renderDlTasks();
+      block.appendChild(panel);
+
+      // Toggle expand on row click
+      row.addEventListener('click',()=>{
+        const opening=!panel.classList.contains('open');
+        panel.classList.toggle('open');
+        chev.textContent=opening?'▴':'▾';
+        collapsed['dl_'+dl.id]=opening;
+        // Don't save collapsed state to Drive for every click — just local
+        try{ localStorage.setItem('weekly-planner', JSON.stringify({tasks,deadlines,collapsed})); }catch(e){}
+      });
+
+      list.appendChild(block);
     });
     container.appendChild(list);
   }
 
-  // Form built with direct element refs — no getElementById needed
+  // Add deadline form
   const form=document.createElement('div'); form.className='inline-form';
   const row1=document.createElement('div'); row1.className='iform-row';
   const nameInp=document.createElement('input'); nameInp.type='text'; nameInp.placeholder='Deadline name…'; nameInp.style.flex='1';
