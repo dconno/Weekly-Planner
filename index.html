@@ -2153,11 +2153,10 @@ function render() {
     rowLabels.appendChild(document.createElement('div'));
     windowDays.forEach(wd=>{
       const tab=document.createElement('button'); tab.className='day-tab'+(wd.dateStr===selDay?' active':'');
-      const slotted=tasks.filter(t=>!t.done&&!t.deleted&&(t.scheduledSlots||[]).some(s=>s.week===wd.week&&s.day===wd.dayName)).length;
-      const recurring=tasks.filter(t=>!t.done&&!t.deleted&&occursOn(t,wd.dateStr)).length;
-      const tc=slotted+recurring;
-      tab.innerHTML=`<span style="display:block;font-size:10px;opacity:0.75">${wd.label}</span>${tc>0?`<span>${tc}</span>`:''}`;
-      tab.style.lineHeight='1.3';
+      const dayName=wd.label==='Today'?'Today':wd.date.toLocaleDateString('en-AU',{weekday:'short'});
+      const dateStr=`${String(wd.date.getDate()).padStart(2,'0')}/${String(wd.date.getMonth()+1).padStart(2,'0')}`;
+      tab.innerHTML=`<span style="display:block">${dayName}</span><span style="display:block;font-size:10px;opacity:0.75">${dateStr}</span>`;
+      tab.style.lineHeight='1.4';
       tab.addEventListener('click',()=>{ selDay=wd.dateStr; render(); });
       rowLabels.appendChild(tab);
     });
